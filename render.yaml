@@ -1,5 +1,5 @@
 # render.yaml - Configuration Render pour Base MySQL + N8N
-# Optimisé pour fonctionner avec N8N déjà hébergé sur Render
+# CORRIGÉ : Services pserv ne peuvent pas avoir healthCheckPath
 
 services:
   # Service MySQL pour la base de données COEUR
@@ -8,7 +8,7 @@ services:
     env: docker
     region: oregon  # Même région que votre N8N pour performance
     plan: starter   # Gratuit pour commencer
-    repo: https://github.com/VOTRE-USERNAME/coeur-database.git  # À MODIFIER
+    repo: https://github.com/JockaliaS/coeur-database.git
     branch: main
     dockerfilePath: ./Dockerfile
 
@@ -33,8 +33,8 @@ services:
       mountPath: /var/lib/mysql
       sizeGB: 10  # 10GB gratuit
 
-    # Health check personnalisé pour MySQL
-    healthCheckPath: /
+    # SUPPRIMÉ: healthCheckPath (non supporté par pserv)
+    # Render gère automatiquement la santé des services pserv
 
   # Service phpMyAdmin OPTIONNEL (coûte un service web)
   # Décommentez si vous voulez une interface d'administration
