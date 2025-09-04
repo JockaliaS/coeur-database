@@ -1,6 +1,6 @@
 -- ======================================
 -- SCRIPT D'INITIALISATION BASE COEUR - RENDER
--- Compatible avec N8N hébergé sur Render
+-- CORRIGÉ: MySQL ne supporte pas "CREATE INDEX IF NOT EXISTS"  
 -- ======================================
 
 -- Sécurité : créer la base si elle n'existe pas
@@ -96,16 +96,54 @@ CREATE TABLE IF NOT EXISTS communications_externes (
     FOREIGN KEY (utilisateur_id) REFERENCES utilisateurs(id) ON DELETE CASCADE
 );
 
--- Index pour performance N8N
-CREATE INDEX IF NOT EXISTS idx_conversations_date ON conversations(date_conversation DESC);
-CREATE INDEX IF NOT EXISTS idx_commandes_date ON commandes(date_commande DESC);
-CREATE INDEX IF NOT EXISTS idx_commandes_livraison ON commandes(date_livraison_reelle DESC);
-CREATE INDEX IF NOT EXISTS idx_commandes_pays ON commandes(pays_livraison);
-CREATE INDEX IF NOT EXISTS idx_temoignages_type ON temoignages(type_temoignage);
-CREATE INDEX IF NOT EXISTS idx_temoignages_produit ON temoignages(produit);
-CREATE INDEX IF NOT EXISTS idx_temoignages_conversion ON temoignages(utilise_pour_conversion);
-CREATE INDEX IF NOT EXISTS idx_communications_date ON communications_externes(date_envoi DESC);
-CREATE INDEX IF NOT EXISTS idx_utilisateurs_modification ON utilisateurs(date_modification DESC);
+-- ======================================
+-- INDEX CRÉÉS AVEC VÉRIFICATION D'EXISTENCE
+-- ======================================
+
+-- Procédure temporaire pour créer index conditionnellement
+DELIMITER $$
+
+CREATE PROCEDURE CreateIndexIfNotExists(
+    IN indexName VARCHAR(128),
+    IN tableName VARCHAR(128), 
+    IN indexColumns TEXT
+)
+BEGIN
+    DECLARE indexExists INT DEFAULT 0;
+
+    SELECT COUNT(*) INTO indexExists
+    FROM INFORMATION_SCHEMA.STATISTICS 
+    WHERE table_schema = DATABASE() 
+    AND table_name = tableName 
+    AND index_name = indexName;
+
+    IF indexExists = 0 THEN
+        SET @sql = CONCAT('CREATE INDEX ', indexName, ' ON ', tableName, ' (', indexColumns, ')');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END$$
+
+DELIMITER ;
+
+-- Créer les index de performance pour N8N
+CALL CreateIndexIfNotExists('idx_conversations_date', 'conversations', 'date_conversation DESC');
+CALL CreateIndexIfNotExists('idx_commandes_date', 'commandes', 'date_commande DESC');
+CALL CreateIndexIfNotExists('idx_commandes_livraison', 'commandes', 'date_livraison_reelle DESC');
+CALL CreateIndexIfNotExists('idx_commandes_pays', 'commandes', 'pays_livraison');
+CALL CreateIndexIfNotExists('idx_temoignages_type', 'temoignages', 'type_temoignage');
+CALL CreateIndexIfNotExists('idx_temoignages_produit', 'temoignages', 'produit');
+CALL CreateIndexIfNotExists('idx_temoignages_conversion', 'temoignages', 'utilise_pour_conversion');
+CALL CreateIndexIfNotExists('idx_communications_date', 'communications_externes', 'date_envoi DESC');
+CALL CreateIndexIfNotExists('idx_utilisateurs_modification', 'utilisateurs', 'date_modification DESC');
+
+-- Supprimer la procédure temporaire
+DROP PROCEDURE IF EXISTS CreateIndexIfNotExists;
+
+-- ======================================
+-- VUES OPTIMISÉES POUR N8N
+-- ======================================
 
 -- Vue client complète avec durée d'utilisation
 CREATE OR REPLACE VIEW vue_client_avec_utilisation AS
@@ -154,7 +192,7 @@ AND t.valide = TRUE
 ORDER BY t.note_satisfaction DESC, t.date_creation DESC;
 
 -- ======================================
--- DONNÉES DE TEST N8N-READY
+-- DONNÉES DE TEST POUR N8N
 -- ======================================
 
 -- Utilisateurs de test
@@ -165,7 +203,7 @@ INSERT IGNORE INTO utilisateurs (nom, prenom, email, telephone) VALUES
 ('Moutoussamy', 'Céline', 'celine.moutoussamy@email.com', '+590690123456'),
 ('Lagrange', 'Pierre', 'pierre.lagrange@email.com', '+596696123456');
 
--- Problématiques
+-- Problématiques santé
 INSERT IGNORE INTO problematiques (utilisateur_id, type_problematique, description) VALUES
 (1, 'douleurs_genou', 'Douleurs chroniques au genou droit'),
 (2, 'gestion_stress', 'Problèmes de stress au travail'),
@@ -173,35 +211,36 @@ INSERT IGNORE INTO problematiques (utilisateur_id, type_problematique, descripti
 (4, 'douleurs_cervicales', 'Tensions cervicales fréquentes'),
 (5, 'problemes_sommeil', 'Difficultés d''endormissement');
 
--- Commandes avec dates et géolocalisation
+-- Commandes avec dates et géolocalisation DOM-TOM
 INSERT IGNORE INTO commandes (id, utilisateur_id, date_commande, date_livraison_prevue, date_livraison_reelle, nombre_produits, prix_total, type_produit, nom_produit, statut_commande, pays_livraison, region_livraison) VALUES
 (1, 1, '2025-09-01', '2025-09-05', '2025-09-04', 2, 89.99, 'bien-être', 'eau_hexagonale', 'livree', 'France', 'Île-de-France'),
 (2, 2, '2025-08-28', '2025-09-02', '2025-08-31', 1, 45.50, 'beauté', 'col_anti_age', 'livree', 'France', 'Provence-Alpes-Côte d''Azur'),
 (3, 4, '2025-08-25', '2025-08-30', '2025-08-29', 1, 67.80, 'bien-être', 'eau_hexagonale', 'livree', 'Guadeloupe', 'Basse-Terre'),
 (4, 5, '2025-08-30', '2025-09-05', '2025-09-03', 2, 134.90, 'beauté', 'col_anti_age', 'livree', 'Martinique', 'Fort-de-France');
 
--- Témoignages avec distinction agent/client
+-- Témoignages avec distinction agent/client + médias
 INSERT IGNORE INTO temoignages (id, utilisateur_id, produit, type_temoignage, contenu_temoignage, url_media, type_media, date_temoignage, duree_utilisation, note_satisfaction, valide, utilise_pour_conversion) VALUES
-(1, 2, 'eau_hexagonale', 'envoye_par_agent', 'Voici le témoignage de Marie qui a résolu ses douleurs !', 'https://example.com/marie-temoignage.mp4', 'video/mp4', '2025-08-15', '2_semaines', 5, TRUE, TRUE),
-(2, 1, 'eau_hexagonale', 'recu_du_client', 'Incroyable ! Mes douleurs ont diminué de 80% en 10 jours !', NULL, NULL, '2025-09-11', '10_jours', 5, TRUE, FALSE),
-(3, 4, 'eau_hexagonale', 'recu_du_client', 'Livraison rapide en Guadeloupe et très efficace !', NULL, NULL, '2025-09-05', '1_semaine', 4, TRUE, FALSE);
+(1, 2, 'eau_hexagonale', 'envoye_par_agent', 'Voici le témoignage de Marie qui a résolu ses douleurs au genou !', 'https://example.com/marie-temoignage.mp4', 'video/mp4', '2025-08-15', '2_semaines', 5, TRUE, TRUE),
+(2, 1, 'eau_hexagonale', 'recu_du_client', 'Incroyable ! Mes douleurs ont diminué de 80% en 10 jours seulement !', NULL, NULL, '2025-09-11', '10_jours', 5, TRUE, FALSE),
+(3, 4, 'eau_hexagonale', 'recu_du_client', 'Livraison rapide en Guadeloupe et produit très efficace !', NULL, NULL, '2025-09-05', '1_semaine', 4, TRUE, FALSE);
 
--- Conversations JSON pour test N8N
+-- Conversations JSON pour test N8N (historique multicanal)
 INSERT IGNORE INTO conversations (utilisateur_id, type_conversation, date_conversation, messages_json, resume_conversation) VALUES
 (1, 'WhatsApp', '2025-09-04', 
  JSON_OBJECT(
-   '10:30', JSON_OBJECT('expediteur', 'client', 'message', 'Bonjour, j''ai reçu ma commande !'),
-   '10:32', JSON_OBJECT('expediteur', 'agent', 'message', 'Parfait Marie ! Comment vous sentez-vous ?'),
-   '10:35', JSON_OBJECT('expediteur', 'client', 'message', 'Déjà une amélioration visible !')
+   '10:30', JSON_OBJECT('expediteur', 'client', 'message', 'Bonjour ! J''ai bien reçu ma commande hier !'),
+   '10:32', JSON_OBJECT('expediteur', 'agent', 'message', 'Parfait Marie ! Comment vous sentez-vous depuis ?'),
+   '10:35', JSON_OBJECT('expediteur', 'client', 'message', 'C''est incroyable, j''ai déjà une amélioration visible !')
  ), 
- 'Suivi post-livraison - Client satisfait'),
+ 'Suivi post-livraison - Cliente très satisfaite'),
 (4, 'WhatsApp', '2025-09-03',
  JSON_OBJECT(
-   '14:20', JSON_OBJECT('expediteur', 'client', 'message', 'Commande reçue en Guadeloupe !'),
-   '14:25', JSON_OBJECT('expediteur', 'agent', 'message', 'Parfait ! Tenez-nous au courant des résultats.')
+   '14:20', JSON_OBJECT('expediteur', 'client', 'message', 'Super ! Ma commande est arrivée en Guadeloupe !'),
+   '14:25', JSON_OBJECT('expediteur', 'agent', 'message', 'Parfait Céline ! Tenez-nous au courant des premiers résultats.')
  ),
- 'Confirmation livraison DOM-TOM');
+ 'Confirmation livraison DOM-TOM - Délai respecté');
 
--- Message de confirmation
-SELECT 'Base de données COEUR v3.0 initialisée pour Render + N8N !' as message;
-SELECT 'Toutes les tables, vues et données de test sont prêtes' as status;
+-- Message de confirmation finale
+SELECT 'Base de données COEUR v3.0 déployée avec succès sur Render !' as message;
+SELECT 'Tables, index, vues et données de test créés - Prêt pour N8N !' as status;
+SELECT CONCAT('Total utilisateurs: ', COUNT(*)) as users FROM utilisateurs;
