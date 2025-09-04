@@ -1,0 +1,59 @@
+# render.yaml - Configuration Render pour Base MySQL + N8N
+# Optimisé pour fonctionner avec N8N déjà hébergé sur Render
+
+services:
+  # Service MySQL pour la base de données COEUR
+  - type: pserv
+    name: coeur-mysql-db
+    env: docker
+    region: oregon  # Même région que votre N8N pour performance
+    plan: starter   # Gratuit pour commencer
+    repo: https://github.com/VOTRE-USERNAME/coeur-database.git  # À MODIFIER
+    branch: main
+    dockerfilePath: ./Dockerfile
+
+    # Variables d'environnement MySQL
+    envVars:
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true  # Généré automatiquement par Render
+      - key: MYSQL_DATABASE
+        value: coeur_db
+      - key: MYSQL_USER
+        value: coeur_user
+      - key: MYSQL_PASSWORD
+        generateValue: true  # Généré automatiquement par Render
+      - key: MYSQL_CHARACTER_SET_SERVER
+        value: utf8mb4
+      - key: MYSQL_COLLATION_SERVER
+        value: utf8mb4_unicode_ci
+
+    # Stockage persistant pour les données MySQL
+    disk:
+      name: mysql-data
+      mountPath: /var/lib/mysql
+      sizeGB: 10  # 10GB gratuit
+
+    # Health check personnalisé pour MySQL
+    healthCheckPath: /
+
+  # Service phpMyAdmin OPTIONNEL (coûte un service web)
+  # Décommentez si vous voulez une interface d'administration
+  # - type: web
+  #   name: coeur-phpmyadmin
+  #   env: docker
+  #   region: oregon
+  #   plan: starter
+  #   dockerfilePath: ./admin/Dockerfile
+  #   envVars:
+  #     - key: PMA_HOST
+  #       fromService:
+  #         type: pserv
+  #         name: coeur-mysql-db
+  #         property: hostInternal
+  #     - key: PMA_USER
+  #       value: coeur_user
+  #     - key: PMA_PASSWORD
+  #       fromService:
+  #         type: pserv
+  #         name: coeur-mysql-db
+  #         envVarKey: MYSQL_PASSWORD
