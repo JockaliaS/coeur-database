@@ -1,0 +1,32 @@
+# Configuration sensible
+.env
+*.env
+!.env.example
+
+# Données locales
+data/
+backups/
+logs/
+dev-data/
+
+# Docker local
+.docker/
+docker-compose.override.yml
+
+# OS et IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Base de données
+*.sql.backup
+*.dump
+
+# Render
+.render/

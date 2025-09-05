@@ -1,18 +1,14 @@
-# render.yaml - Configuration Render complète pour MySQL accessible
-# Permet la connexion depuis N8N externe
-
+# render.yaml - Configuration MySQL accessible pour N8N
 services:
-  # Service MySQL accessible depuis l'extérieur
   - type: web
     name: coeur-mysql-db
     env: docker
     region: oregon
     plan: starter
-    repo: https://github.com/JockaliaS/coeur-database.git  # REMPLACEZ par votre repo
+    repo: https://github.com/JockaliaS/coeur-database.git  # MODIFIEZ avec votre repo
     branch: main
     dockerfilePath: ./Dockerfile
 
-    # Variables d'environnement MySQL
     envVars:
       - key: MYSQL_ROOT_PASSWORD
         generateValue: true
@@ -29,11 +25,7 @@ services:
       - key: PORT
         value: "10000"
 
-    # Stockage persistant
     disk:
       name: mysql-data
       mountPath: /var/lib/mysql
       sizeGB: 10
-
-    # Health check pour service web
-    healthCheckPath: /health

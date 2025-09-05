@@ -1,32 +1,33 @@
 #!/bin/bash
 set -e
 
-echo "🌐 Démarrage serveur health check sur port $PORT..."
+echo "🌐 Health server démarré sur port $PORT"
 
 while true; do
-    # Attendre que MySQL soit prêt
-    while ! mysqladmin ping -h localhost --silent 2>/dev/null; do
-        sleep 2
-    done
-
-    # Serveur HTTP simple
-    {
-        echo "🔍 Health check MySQL..."
-
-        if mysqladmin ping -h localhost --silent 2>/dev/null; then
-            # Test connexion base
-            mysql -u root -p$MYSQL_ROOT_PASSWORD -e "USE $MYSQL_DATABASE; SELECT 'OK' as status;" 2>/dev/null
-            if [ $? -eq 0 ]; then
-                HTTP_RESPONSE="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 45\r\n\r\n{"status":"OK", "database":"$MYSQL_DATABASE"}"
-            else
-                HTTP_RESPONSE="HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 27\r\n\r\n{"error":"Database error"}"
-            fi
+    # Vérifier état MySQL
+    if mysqladmin ping -h localhost --silent 2>/dev/null; then
+        # Tester accès à la base
+        if mysql -u root -p$MYSQL_ROOT_PASSWORD -e "USE $MYSQL_DATABASE; SELECT 1 as test;" >/dev/null 2>&1; then
+            STATUS='{"status":"OK","database":"'$MYSQL_DATABASE'","mysql":"UP"}'
+            HTTP_CODE="200 OK"
         else
-            HTTP_RESPONSE="HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 25\r\n\r\n{"error":"MySQL down"}"
+            STATUS='{"status":"ERROR","error":"Database access failed"}'
+            HTTP_CODE="503 Service Unavailable"
         fi
+    else
+        STATUS='{"status":"ERROR","error":"MySQL not responding"}'
+        HTTP_CODE="503 Service Unavailable"
+    fi
 
-        echo -e "$HTTP_RESPONSE"
-    } | nc -l -p "$PORT" -q 1 2>/dev/null || true
+    # Répondre aux requêtes HTTP
+    RESPONSE="HTTP/1.1 $HTTP_CODE\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ${#STATUS}\r\n\r\n$STATUS"
 
+    echo -e "$RESPONSE" | nc -l -p "$PORT" -q 1 2>/dev/null || {
+        # En cas d'erreur nc, attendre un peu
+        sleep 3
+        continue
+    }
+
+    # Petit délai entre les requêtes
     sleep 1
 done
