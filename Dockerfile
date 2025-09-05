@@ -1,33 +1,30 @@
-# Dockerfile - MySQL 8.0 pour service web Render
+# Dockerfile - MySQL simple avec nc seulement
 FROM mysql:8.0
 
-# Installer packages avec microdnf (Oracle Linux dans mysql:8.0)
+# Installer nc et outils réseau
 RUN microdnf update && \
-    microdnf install -y nc procps-ng && \
+    microdnf install -y nc procps-ng net-tools && \
     microdnf clean all
 
-# Copier les scripts et configuration
+# Copier fichiers
 COPY init-scripts/ /docker-entrypoint-initdb.d/
 COPY config/my.cnf /etc/mysql/conf.d/
-COPY health-server.sh /usr/local/bin/
-COPY mysql-start.sh /usr/local/bin/
+COPY mysql-start-simple.sh /usr/local/bin/
 
-# Rendre les scripts exécutables
-RUN chmod +x /usr/local/bin/health-server.sh /usr/local/bin/mysql-start.sh
-
-# Créer dossiers avec permissions correctes
-RUN mkdir -p /var/log/mysql /var/lib/mysql-files && \
+# Permissions
+RUN chmod +x /usr/local/bin/mysql-start-simple.sh && \
+    mkdir -p /var/log/mysql /var/lib/mysql-files && \
     chown -R mysql:mysql /var/log/mysql /var/lib/mysql /var/lib/mysql-files
 
-# Exposer ports MySQL et Health Check
+# Ports
 EXPOSE 3306 10000
 
-# Variables d'environnement
+# Variables
 ENV MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
 ENV MYSQL_DATABASE=${MYSQL_DATABASE:-coeur_db}
 ENV MYSQL_USER=${MYSQL_USER:-coeur_user}
 ENV MYSQL_PASSWORD=${MYSQL_PASSWORD}
 ENV PORT=${PORT:-10000}
 
-# Script de démarrage
-CMD ["/usr/local/bin/mysql-start.sh"]
+# Démarrage
+CMD ["/usr/local/bin/mysql-start-simple.sh"]

@@ -1,60 +1,44 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Démarrage MySQL + Health Server pour Render..."
+echo "🚀 Démarrage pour Render - Health Server PUIS MySQL..."
 
-# Gestion des signaux d'arrêt
-cleanup() {
-    echo "🛑 Arrêt propre des services..."
-    if [ -n "$MYSQL_PID" ]; then
-        kill $MYSQL_PID 2>/dev/null || true
-    fi
-    if [ -n "$HEALTH_PID" ]; then
-        kill $HEALTH_PID 2>/dev/null || true
-    fi
-    exit 0
+# Fonction health server simple
+start_simple_health() {
+    while true; do
+        # Réponse par défaut pendant que MySQL démarre
+        RESPONSE='{"status":"STARTING","message":"MySQL initializing"}'
+
+        # Si MySQL répond, tester la base
+        if mysqladmin ping -h localhost --silent 2>/dev/null; then
+            if mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "USE $MYSQL_DATABASE; SELECT 1;" >/dev/null 2>&1; then
+                RESPONSE='{"status":"OK","database":"'$MYSQL_DATABASE'","mysql":"UP"}'
+                HTTP_CODE="200 OK"
+            else
+                RESPONSE='{"status":"ERROR","database":"access_failed"}'
+                HTTP_CODE="503 Service Unavailable"
+            fi
+        else
+            HTTP_CODE="503 Service Unavailable"
+        fi
+
+        # Serveur HTTP basique
+        echo -e "HTTP/1.1 ${HTTP_CODE:-503 Service Unavailable}\r\nContent-Type: application/json\r\nContent-Length: ${#RESPONSE}\r\n\r\n$RESPONSE" | nc -l -p "$PORT" -q 1 2>/dev/null || sleep 1
+    done
 }
 
-trap cleanup SIGTERM SIGINT
+# CRITIQUE: Démarrer health server EN PREMIER pour que Render détecte le port
+echo "🌐 Health server sur port $PORT..."
+start_simple_health &
+HEALTH_PID=$!
 
-# Démarrer MySQL en arrière-plan
-echo "📀 Initialisation MySQL..."
-docker-entrypoint.sh mysqld \
+# Attendre un peu que le port soit ouvert
+sleep 2
+
+echo "📀 Démarrage MySQL..."
+# MySQL en foreground (process principal)
+exec docker-entrypoint.sh mysqld \
     --bind-address=0.0.0.0 \
     --port=3306 \
     --character-set-server=utf8mb4 \
-    --collation-server=utf8mb4_unicode_ci \
-    --max-connections=200 &
-
-MYSQL_PID=$!
-
-# Attendre que MySQL soit opérationnel
-echo "⏳ Attente démarrage MySQL..."
-for i in {1..60}; do
-    if mysqladmin ping -h localhost --silent 2>/dev/null; then
-        echo "✅ MySQL prêt sur port 3306 !"
-        break
-    fi
-    echo "   Tentative $i/60..."
-    sleep 2
-done
-
-# Vérification finale
-if ! mysqladmin ping -h localhost --silent 2>/dev/null; then
-    echo "❌ ERREUR: MySQL n'a pas pu démarrer dans les temps"
-    exit 1
-fi
-
-# Démarrer health server
-echo "🌐 Démarrage health check sur port $PORT..."
-/usr/local/bin/health-server.sh &
-HEALTH_PID=$!
-
-echo "🎉 Services opérationnels !"
-echo "   • MySQL: localhost:3306"
-echo "   • Health Check: localhost:$PORT"
-echo "   • Base: $MYSQL_DATABASE"
-echo "   • User: $MYSQL_USER"
-
-# Maintenir le processus principal actif
-wait $MYSQL_PID
+    --collation-server=utf8mb4_unicode_ci
