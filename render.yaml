@@ -1,4 +1,4 @@
-# render.yaml - Configuration MySQL accessible pour N8N
+# render.yaml - MySQL avec port 3306 exposé publiquement
 services:
   - type: web
     name: coeur-mysql-db
@@ -8,6 +8,9 @@ services:
     repo: https://github.com/JockaliaS/coeur-database.git  # MODIFIEZ avec votre repo
     branch: main
     dockerfilePath: ./Dockerfile
+
+    # ✅ PORT MYSQL EXPOSÉ PUBLIQUEMENT
+    port: 3306
 
     envVars:
       - key: MYSQL_ROOT_PASSWORD
@@ -23,7 +26,7 @@ services:
       - key: MYSQL_COLLATION_SERVER
         value: utf8mb4_unicode_ci
       - key: PORT
-        value: "10000"
+        value: "3306"
 
     disk:
       name: mysql-data
